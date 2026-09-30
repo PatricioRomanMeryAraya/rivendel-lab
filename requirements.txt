@@ -1,0 +1,3 @@
+# Única dependencia real. El servidor es stdlib pura; si yfinance no está,
+# cae solo a la API pública de Yahoo por urllib.
+yfinance>=0.2.40

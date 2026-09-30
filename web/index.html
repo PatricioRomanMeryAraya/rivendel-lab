@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Rivendel · payoff lab</title>
+<link rel="stylesheet" href="rivendel.css"/>
+</head>
+<body>
+
+<div class="topbar"><div class="wrap">
+  <span class="brand"><b>RIVENDEL</b><span class="sep"> ▸ </span>payoff lab</span>
+  <span class="led" id="led"></span>
+  <span id="mstate">iniciando…</span>
+  <span class="tag">LOCAL · STDLLIB · YFINANCE</span>
+</div></div>
+
+<main class="wrap">
+
+  <!-- mercado -->
+  <section class="sec">
+    <div class="sec-h"><span class="c">//</span> mercado · datos reales</div>
+    <div class="sec-b">
+      <div class="mktline">
+        <input type="text" id="tk" value="NVDA" spellcheck="false" autocapitalize="characters"
+               autocomplete="off" aria-label="Ticker"/>
+        <button id="btnLoad" type="button">cargar</button>
+        <select id="exp" aria-label="Vencimiento" disabled><option>vencimiento</option></select>
+        <button id="btnReload" type="button" title="Volver a pedir precio y cadena">⟳ refrescar</button>
+        <button id="btnManual" type="button" title="Strikes y primas a mano, sin red">modo manual</button>
+        <span id="quick"></span>
+      </div>
+      <div class="mstats" id="mktRow" hidden>
+        <div class="mstat"><span class="k">Subyacente</span><span class="n" id="mSym">—</span></div>
+        <div class="mstat"><span class="k">Spot</span><span class="n" id="mSpot">—</span></div>
+        <div class="mstat"><span class="k">Día</span><span class="n" id="mChg">—</span></div>
+        <div class="mstat"><span class="k">Días al vto.</span><span class="n" id="mDays">—</span></div>
+        <div class="mstat"><span class="k">IV ATM</span><span class="n" id="mIv">—</span></div>
+        <div class="mstat"><span class="k">Vol. realizada 20d</span><span class="n" id="mRv">—</span></div>
+      </div>
+      <div class="tglrow">
+        <span class="lbl">opciones</span>
+        <button id="btnMult" type="button" title="1 contrato = 100 acciones">×100 por contrato</button>
+        <button id="btnSide" type="button" title="Primas al mid o al precio que te cruzan">prima: mid</button>
+        <button id="btnZone" type="button" title="Zona esperada = spot ± 1 desvío implícito al vencimiento">zona ±1σ</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- presets -->
+  <section class="sec">
+    <div class="sec-h"><span class="c">//</span> presets · estructuras clásicas</div>
+    <div class="sec-b">
+      <div class="presets" id="presets"></div>
+      <p id="presetNote">Presets escritos con el subyacente en 100. Con ticker cargado, los strikes se
+      reescalan al spot real, se pegan al strike listado más cercano y las primas salen de la cadena.</p>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <!-- estructura -->
+    <section class="sec">
+      <div class="sec-h"><span class="c">//</span> estructura · patas</div>
+      <div class="sec-b">
+        <table>
+          <thead><tr><th class="num">Cant.</th><th>Tipo</th><th>Strike</th><th class="num">Prima</th><th></th></tr></thead>
+          <tbody id="legsBody"></tbody>
+        </table>
+        <div class="addrow">
+          <button id="btnAddCall" type="button">+ call</button>
+          <button id="btnAddPut" type="button">+ put</button>
+          <button id="btnAddStock" type="button">+ subyacente</button>
+        </div>
+        <div class="srow"><label for="zlo">piso zona</label>
+          <input type="range" id="zlo" min="50" max="150" step="1" value="92"/><output id="zloVal">92</output></div>
+        <div class="srow"><label for="zhi">techo zona</label>
+          <input type="range" id="zhi" min="50" max="150" step="1" value="112"/><output id="zhiVal">112</output></div>
+        <p class="hint">Marcá dónde esperás que aterrice el subyacente. Si la zona cae entera sobre un
+        tramo plano, la estructura no expresa tu vista.</p>
+      </div>
+    </section>
+
+    <!-- chart -->
+    <section class="sec">
+      <div class="sec-h"><span class="c">//</span> payoff al vencimiento</div>
+      <div class="sec-b">
+        <canvas id="chart" width="960" height="470"></canvas>
+        <div class="readouts">
+          <div class="ro"><span class="k">Costo neto</span><span class="n" id="rNet">—</span></div>
+          <div class="ro"><span class="k">Máx. ganancia</span><span class="n" id="rMax">—</span></div>
+          <div class="ro"><span class="k">Máx. pérdida</span><span class="n" id="rMin">—</span></div>
+          <div class="ro"><span class="k">Breakevens</span><span class="n" id="rBe">—</span></div>
+        </div>
+        <div class="views">
+          <div class="view"><span class="k">Vista sobre dirección</span><span class="n" id="rDir">—</span></div>
+          <div class="view"><span class="k">Vista sobre volatilidad</span><span class="n" id="rVol">—</span></div>
+        </div>
+        <p id="verdict">—</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- liquidación -->
+  <section class="sec">
+    <div class="sec-h"><span class="c">//</span> liquidación · pata por pata</div>
+    <div class="sec-b">
+      <div class="srow"><label for="spotM">precio al vto.</label>
+        <input type="range" id="spotM" min="50" max="155" step="0.5" value="103"/><output id="spotMVal">103</output></div>
+      <table>
+        <thead><tr><th>Pata</th><th>Estado</th><th>Valor intrínseco</th>
+        <th class="num">Prima</th><th class="num">Neto</th></tr></thead>
+        <tbody id="settleBody"></tbody>
+      </table>
+      <p class="hint">La prima se cuenta con el signo del flujo: negativa si la pagaste, positiva si la
+      cobraste. El valor intrínseco de una pata corta entra restando, porque lo paga quien la escribió.</p>
+    </div>
+  </section>
+
+  <!-- regiones -->
+  <section class="sec">
+    <div class="sec-h"><span class="c">//</span> álgebra por tramos</div>
+    <div class="sec-b">
+      <p class="hint">Los strikes parten el eje en tramos; dentro de cada tramo el payoff es una recta
+      π = a·S + b. La recta va siempre <b>por acción</b>.</p>
+      <div id="regions" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- black-scholes -->
+  <section class="sec">
+    <div class="sec-h"><span class="c">//</span> black-scholes · griegas y p&amp;l antes del vencimiento</div>
+    <div class="sec-b">
+      <p class="hint">La silueta sólida es el pago <b>al vencimiento</b>. La línea punteada ámbar es el P&amp;L
+      <b>hoy</b> (o al horizonte que elijas), marcado a modelo con la IV de la cadena — <b>americano</b> por
+      defecto (binomial, ejercicio anticipado) o europeo (Black-Scholes). La distancia entre las dos curvas es
+      el valor tiempo todavía no realizado.</p>
+      <div class="bsgrid" style="margin-top:12px">
+        <div class="field"><label>tasa r %</label><input type="number" id="bsR" step="0.05" value="4.30"/></div>
+        <div class="field"><label>dividendo %</label><input type="number" id="bsQ" step="0.1" value="0"/></div>
+        <div class="field"><label>IV si falta %</label><input type="number" id="bsIv" step="1" value="30"/></div>
+        <div class="field"><label>días al vto.</label><input type="number" id="bsDte" step="1" value="30"/></div>
+        <button class="on" id="btnRate" type="button" title="r de la curva del Tesoro al plazo de la opción, o fijada a mano">r: curva</button>
+        <button class="on" id="btnModel" type="button" title="Americano (binomial) o europeo (Black-Scholes)">modelo: americano</button>
+        <button class="on" id="btnDiv" type="button" title="Dividendos discretos (calendario ex-div) o rendimiento continuo">div: discretos</button>
+        <button class="on" id="btnSurf" type="button" title="IV de superficie ajustada (arb-aware) o IV cruda de la cadena">IV: superficie</button>
+      </div>
+      <div class="srow"><label for="bsH">horizonte</label>
+        <input type="range" id="bsH" min="0" max="30" step="1" value="0"/><output id="bsHVal">0d</output></div>
+      <div class="srow"><label for="bsV">Δ IV</label>
+        <input type="range" id="bsV" min="-20" max="20" step="1" value="0"/><output id="bsVVal">+0pt</output></div>
+      <div class="gstats">
+        <div class="mstat"><span class="k">P&amp;L a horizonte</span><span class="n" id="gPnl">—</span></div>
+        <div class="mstat"><span class="k">Valor teórico neto</span><span class="n" id="gVal">—</span></div>
+        <div class="mstat"><span class="k">Delta Δ</span><span class="n" id="gDelta">—</span></div>
+        <div class="mstat"><span class="k">Gamma Γ</span><span class="n" id="gGamma">—</span></div>
+        <div class="mstat"><span class="k">Theta/día Θ</span><span class="n" id="gTheta">—</span></div>
+        <div class="mstat"><span class="k">Vega/pt</span><span class="n" id="gVega">—</span></div>
+        <div class="mstat"><span class="k">Rho/1%</span><span class="n" id="gRho">—</span></div>
+      </div>
+      <p class="statusline" id="gStatus">—</p>
+      <p class="statusline" id="gSurf">—</p>
+      <table style="margin-top:8px">
+        <thead><tr><th>Pata</th><th class="num">IV</th><th class="num">Δ</th><th class="num">Γ</th>
+        <th class="num">Θ/día</th><th class="num">Vega/pt</th><th class="num">Rho/1%</th></tr></thead>
+        <tbody id="greeksBody"></tbody>
+      </table>
+      <p class="hint">Convención: theta por día natural, vega por punto de IV, rho por 1% de tasa. En
+      <b>×100</b> las griegas van por contrato. <b>r</b> se interpola de la curva del Tesoro (Treasury.gov) al
+      plazo del vencimiento. <b>ejercicio antic.</b> en la línea de estado = americano − europeo: lo que el
+      modelo europeo dejaba sin contar. Los <b>dividendos discretos</b> (calendario ex-div estimado por
+      cadencia) disparan el ejercicio anticipado alrededor del ex-date. La <b>IV</b> por defecto sale de una
+      superficie <b>SVI arbitrage-free</b> (Gatheral): forward implícito por paridad put-call + IV americana de
+      los mids OTM invertida contra el mismo binomial que valúa las patas, con la condición de mariposa
+      g(k)≥0 (si no ajusta, cae a una sonrisa convexa). Marca los strikes con cotización sospechosa.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer><div class="wrap">
+  <p><b style="color:var(--dim)">Rivendel</b> · lab local de payoffs con datos reales. Inspirado en el lab de
+  payoff de Atlas (atlas-l3.vercel.app); frontend reimplementado desde cero.</p>
+  <p>Datos de Yahoo (diferidos ~15 min en acciones/ETFs de EE.UU., no oficiales). El <i>mid</i> no es un precio
+  ejecutable: usá <i>prima: te cruzan</i> para ver el costo real. Dividendos proyectados por cadencia histórica.
+  El rebalanceo diario de los ETF 3× no está modelado. Esto es para estudiar estructuras, no para operar.</p>
+</div></footer>
+
+<script>
+(function(){
+"use strict";
+
+/* ================= estado ================= */
+var legs = [];
+var S0 = 100;                       /* referencia: spot real, o 100 en manual */
+var DOM = {min:50, max:155};        /* dominio del eje X */
+var zlo = 92, zhi = 112, spotM = 103;
+var MULT = 1;                       /* 1 = por acción · 100 = por contrato */
+var SIDE = "mid";                   /* mid | cross (el precio que te cruzan) */
+
+var MK = {on:false, sym:null, name:null, cur:"USD", spot:null, chg:null,
+          expiries:[], expiry:null, days:null, atmIV:null, sigma1:null,
+          rv20:null, calls:{}, puts:{}, strikes:[], asof:null, provider:null};
+
+var WATCH = ["NVDA", "SOXL", "SOXS"];   /* tickers de la mesa */
+var REQ = 0;                            /* generación: respuestas viejas se descartan */
+
+var PRESETS = {
+  "Covered call":       [[1,"stock",0,100],[-1,"call",105,3]],
+  "Short put":          [[-1,"put",105,8]],
+  "Protective put":     [[1,"stock",0,100],[1,"put",95,2]],
+  "Collar":             [[1,"stock",0,100],[1,"put",95,2],[-1,"call",110,2]],
+  "Bull call spread":   [[1,"call",100,6],[-1,"call",110,2.5]],
+  "Bear put spread":    [[1,"put",105,7],[-1,"put",95,2.5]],
+  "Bull put spread":    [[-1,"put",105,7],[1,"put",95,2.5]],
+  "Long straddle":      [[1,"call",100,5],[1,"put",100,4]],
+  "Short straddle":     [[-1,"call",100,5],[-1,"put",100,4]],
+  "Long strangle":      [[1,"call",105,3],[1,"put",95,2.5]],
+  "Long butterfly":     [[1,"call",95,8],[-2,"call",100,5],[1,"call",105,3]],
+  "Long risk reversal": [[1,"call",110,2.5],[-1,"put",90,2.5]],
+  "Short seagull":      [[1,"put",100,4],[-1,"put",90,1.5],[-1,"call",110,2.5]],
+  "Synthetic forward":  [[1,"call",100,5],[-1,"put",100,4.5]]
+};
+var activePreset = "Covered call";
+
+function el(id){ return document.getElementById(id); }
+
+/* ================= formato ================= */
+function grp(a, nd){
+  return Number(a).toLocaleString("en-US",{minimumFractionDigits:nd, maximumFractionDigits:nd});
+}
+function f2(x){ return (x < 0 ? "−" : "") + grp(Math.abs(x), 2); }  /* por acción */
+function fm(x){ return f2(x * MULT); }                               /* en la unidad elegida */
+function fk(k){ return grp(k, (k % 1 === 0) ? 0 : 2); }
+function pct(x){ return (x * 100).toFixed(2) + "%"; }
+function unit(){ return MULT === 100 ? "por contrato" : "por acción"; }
+
+/* ================= parámetros del modelo ================= */
+var RATE  = 0.043;      /* tasa libre de riesgo (decimal) */
+var DIVY  = 0.0;        /* dividendo continuo (decimal) */
+var IVMAN = 0.30;       /* IV de respaldo si la pata no cotiza IV */
+var DTE   = 30;         /* días al vencimiento que usa la capa BS */
+var elapsed = 0;        /* días transcurridos (horizonte): tau = (DTE-elapsed)/365 */
+var VSHIFT = 0;         /* shift de IV en puntos de volatilidad */
+var CURVE = null;       /* curva del Tesoro [[años, tasa_decimal], ...] */
+var rateAuto = true;    /* r sale de la curva al plazo, o manual */
+var MODEL = "american"; /* american (binomial) | european (Black-Scholes) */
+var DIVSCHED = [];      /* [{date, amount, ty}] ex-divs en años desde hoy */
+var DIVMODE  = "discretos";
+var DIVEST   = false;
+var SURF = {ok:false};
+var SURFMODE = true;
+
+/* ================= núcleo numérico =================
+   Fórmulas estándar de la literatura (Black-Scholes cerrado, binomial CRR).
+   Bloque autocontenido para los tests (ver tests/js_engine.js): empieza en la
+   definición de la función de error y termina justo antes del marcador de IV
+   por pata. Esas dos marcas van verbatim, no repetirlas en comentarios. */
+
+/* N(0,1): CDF vía erf (Abramowitz-Stegun 7.1.26) y PDF. */
+function erf(x){
+  var s = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  var t = 1 / (1 + 0.3275911 * x);
+  var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return s * y;
+}
+function Ncdf(x){ return 0.5 * (1 + erf(x / Math.SQRT2)); }
+function Npdf(x){ return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+
+/* Precio y griegas de UNA opción europea, por acción y sin signo.
+   Crudas: vega por 1.00 de vol · theta por año · rho por 1.00 de tasa. */
+function bsOne(kind, S, K, T, sig, r, q){
+  var call = (kind === "call");
+  if (!(T > 0) || !(sig > 0) || !(S > 0) || !(K > 0)){
+    return {price: Math.max(call ? S - K : K - S, 0),
+            delta: call ? (S > K ? 1 : 0) : (S < K ? -1 : 0),
+            gamma: 0, vega: 0, theta: 0, rho: 0};
+  }
+  var sqT = Math.sqrt(T), vsq = sig * sqT;
+  var d1 = (Math.log(S / K) + (r - q + sig * sig / 2) * T) / vsq, d2 = d1 - vsq;
+  var eqt = Math.exp(-q * T), ert = Math.exp(-r * T), pdf = Npdf(d1);
+  var gamma = eqt * pdf / (S * vsq), vega = S * eqt * pdf * sqT, price, delta, theta, rho;
+  if (call){
+    price = S * eqt * Ncdf(d1) - K * ert * Ncdf(d2);
+    delta = eqt * Ncdf(d1);
+    theta = -(S * eqt * pdf * sig) / (2 * sqT) - r * K * ert * Ncdf(d2) + q * S * eqt * Ncdf(d1);
+    rho   = K * T * ert * Ncdf(d2);
+  } else {
+    price = K * ert * Ncdf(-d2) - S * eqt * Ncdf(-d1);
+    delta = -eqt * Ncdf(-d1);
+    theta = -(S * eqt * pdf * sig) / (2 * sqT) + r * K * ert * Ncdf(-d2) - q * S * eqt * Ncdf(-d1);
+    rho   = -K * T * ert * Ncdf(-d2);
+  }
+  return {price: price, delta: delta, gamma: gamma, vega: vega, theta: theta, rho: rho};
+}
+
+var AM_N  = 160;   /* pasos del binomial para las griegas */
+var AM_NC = 80;    /* pasos para la curva de P&L (solo precio) */
+
+/* Valor presente, en el instante `from`, de los dividendos con ex-fecha en
+   (from, to]. Cada dividendo es [t_en_años, monto]. */
+function pvDivs(divs, from, to, r){
+  var s = 0;
+  for (var i = 0; i < divs.length; i++){
+    var t = divs[i][0];
+    if (t > from && t <= to) s += divs[i][1] * Math.exp(-r * (t - from));
+  }
+  return s;
+}
+
+/* Opción AMERICANA: binomial CRR con ejercicio anticipado y dividendos
+   discretos por el método escrow (se difunde S~ = S − VP(divs); el ejercicio
+   se decide contra S~ + VP(divs futuros)). Con divs=[] es el CRR clásico. */
+function amPrice(kind, S, K, T, sig, r, q, N, divs){
+  divs = divs || [];
+  if (!(T > 0) || !(sig > 0) || !(S > 0) || !(K > 0))
+    return Math.max(kind === "call" ? S - K : K - S, 0);
+  var S0 = S - pvDivs(divs, 0, T, r);
+  if (S0 <= 0) S0 = 1e-6;
+  var dt = T / N, u = Math.exp(sig * Math.sqrt(dt)), d = 1 / u,
+      disc = Math.exp(-r * dt), u2 = u * u;
+  var p = (Math.exp((r - q) * dt) - d) / (u - d);
+  if (p < 0) p = 0; else if (p > 1) p = 1;
+  var call = (kind === "call"), V = new Array(N + 1), i, j, ST;
+  ST = S0 * Math.pow(d, N);
+  for (j = 0; j <= N; j++){ V[j] = Math.max(call ? ST - K : K - ST, 0); ST *= u2; }
+  for (i = N - 1; i >= 0; i--){
+    var add = divs.length ? pvDivs(divs, i * dt, T, r) : 0;
+    ST = S0 * Math.pow(d, i);
+    for (j = 0; j <= i; j++){
+      var cont = disc * (p * V[j + 1] + (1 - p) * V[j]);
+      var Sa = ST + add, ex = call ? Sa - K : K - Sa;
+      if (ex < 0) ex = 0;
+      V[j] = cont > ex ? cont : ex;
+      ST *= u2;
+    }
+  }
+  return V[0];
+}
+
+/* Griegas americanas: delta/gamma/theta de los nodos del árbol; vega/rho por
+   diferencia central. Crudas como bsOne (vega por 1.00, theta por año). */
+function amGreeks(kind, S, K, T, sig, r, q, divs){
+  divs = divs || [];
+  var call = (kind === "call");
+  if (!(T > 0) || !(sig > 0) || !(S > 0) || !(K > 0)){
+    return {price: Math.max(call ? S - K : K - S, 0),
+            delta: call ? (S > K ? 1 : 0) : (S < K ? -1 : 0),
+            gamma: 0, vega: 0, theta: 0, rho: 0};
+  }
+  var N = AM_N, S0 = S - pvDivs(divs, 0, T, r);
+  if (S0 <= 0) S0 = 1e-6;
+  var dt = T / N, u = Math.exp(sig * Math.sqrt(dt)), d = 1 / u,
+      disc = Math.exp(-r * dt), u2 = u * u;
+  var p = (Math.exp((r - q) * dt) - d) / (u - d);
+  if (p < 0) p = 0; else if (p > 1) p = 1;
+  var V = new Array(N + 1), i, j, ST, V1 = null, V2 = null;
+  ST = S0 * Math.pow(d, N);
+  for (j = 0; j <= N; j++){ V[j] = Math.max(call ? ST - K : K - ST, 0); ST *= u2; }
+  for (i = N - 1; i >= 0; i--){
+    var add = divs.length ? pvDivs(divs, i * dt, T, r) : 0;
+    ST = S0 * Math.pow(d, i);
+    for (j = 0; j <= i; j++){
+      var cont = disc * (p * V[j + 1] + (1 - p) * V[j]);
+      var Sa = ST + add, ex = call ? Sa - K : K - Sa;
+      if (ex < 0) ex = 0;
+      V[j] = cont > ex ? cont : ex;
+      ST *= u2;
+    }
+    if (i === 2){ V2 = [V[0], V[1], V[2]]; }
+    if (i === 1){ V1 = [V[0], V[1]]; }
+  }
+  /* delta/gamma contra el spot real: el VP(divs) es aditivo y se cancela en
+     las diferencias, así que se usan los nodos de S~ (=S0). */
+  var price = V[0], Su = S0 * u, Sd = S0 * d, Suu = S0 * u * u, Sdd = S0 * d * d;
+  var delta = (V1[1] - V1[0]) / (Su - Sd);
+  var gamma = (((V2[2] - V2[1]) / (Suu - S0)) - ((V2[1] - V2[0]) / (S0 - Sdd))) / (0.5 * (Suu - Sdd));
+  var theta = (V2[1] - price) / (2 * dt);
+  var hs = 0.01, hr = 0.0001;
+  var vega = (amPrice(kind, S, K, T, sig + hs, r, q, N, divs) - amPrice(kind, S, K, T, sig - hs, r, q, N, divs)) / (2 * hs);
+  var rho  = (amPrice(kind, S, K, T, sig, r + hr, q, N, divs) - amPrice(kind, S, K, T, sig, r - hr, q, N, divs)) / (2 * hr);
+  return {price: price, delta: delta, gamma: gamma, vega: vega, theta: theta, rho: rho};
+}
+
+/* Europeo con los mismos dividendos discretos (spot escrow): aísla la prima de
+   ejercicio anticipado = americano − europeo, a divs iguales. */
+function euPriceDiv(kind, S, K, T, sig, r, q, divs){
+  var S0 = (divs && divs.length) ? S - pvDivs(divs, 0, T, r) : S;
+  return bsOne(kind, S0, K, T, sig, r, q).price;
+}
+
+/* ---- Superficie de IV (por vencimiento) ----
+   La IV por contrato es ruidosa y call≠put al mismo strike. Acá:
+   (1) forward implícito por paridad put-call; (2) IV de los mids OTM contra
+   ese forward (Black-76), una sola IV por strike; (3) sonrisa convexa en
+   varianza total w(k)=σ²T (WLS con convexidad forzada); (4) SVI de Gatheral
+   calibrado por el método quasi-explicit si pasa las condiciones de
+   no-arbitraje; si no, queda la sonrisa convexa. */
+function bs76(isC, F, K, T, sig, disc){
+  if (!(T > 0) || !(sig > 0)) return disc * Math.max(isC ? F - K : K - F, 0);
+  var v = sig * Math.sqrt(T), d1 = (Math.log(F / K) + 0.5 * v * v) / v, d2 = d1 - v;
+  return isC ? disc * (F * Ncdf(d1) - K * Ncdf(d2))
+             : disc * (K * Ncdf(-d2) - F * Ncdf(-d1));
+}
+function bs76Vega(F, K, T, sig, disc){
+  if (!(T > 0) || !(sig > 0)) return 0;
+  var v = sig * Math.sqrt(T), d1 = (Math.log(F / K) + 0.5 * v * v) / v;
+  return disc * F * Npdf(d1) * Math.sqrt(T);
+}
+/* IV de Black-76: guess racional (Brenner-Subrahmanyam en ATM) + Newton-Raphson
+   con amortiguación (estilo Jäckel "Let's Be Rational"), bisección de respaldo. */
+function iv76(isC, price, F, K, T, disc){
+  var intr = disc * Math.max(isC ? F - K : K - F, 0), cap = disc * (isC ? F : K);
+  if (!(price > intr + 1e-9) || price >= cap) return NaN;
+  var sqT = Math.sqrt(T), y = Math.log(F / K);
+  var sig = (price / disc) / (0.3989422804014327 * F * sqT);
+  if (!(sig > 1e-3) || !isFinite(sig)) sig = 0.3;
+  sig = Math.min(Math.max(sig, 1e-3), 5);
+  for (var it = 0; it < 16; it++){
+    var v = sig * sqT, d1 = (y + 0.5 * v * v) / v, d2 = d1 - v;
+    var pm = isC ? disc * (F * Ncdf(d1) - K * Ncdf(d2))
+                 : disc * (K * Ncdf(-d2) - F * Ncdf(-d1));
+    var diff = pm - price;
+    if (Math.abs(diff) < 1e-9) return sig;
+    var vega = disc * F * Npdf(d1) * sqT;
+    if (!(vega > 1e-11)) break;
+    var step = diff / vega;
+    if (step > 0.5 * sig) step = 0.5 * sig; else if (step < -0.5 * sig) step = -0.5 * sig;
+    sig -= step;
+    if (!(sig > 0)) sig = 1e-4; else if (sig > 8) sig = 8;
+  }
+  var lo = 1e-4, hi = 8, mid, b;
+  for (b = 0; b < 80; b++){ mid = (lo + hi) / 2; if (bs76(isC, F, K, T, mid, disc) > price) hi = mid; else lo = mid; }
+  return (lo + hi) / 2;
+}
+function solveLin(A, b, n){                       /* Gauss con pivoteo parcial */
+  var i, j, k, M = [];
+  for (i = 0; i < n; i++) M.push(A[i].slice().concat([b[i]]));
+  for (i = 0; i < n; i++){
+    var pv = i;
+    for (j = i + 1; j < n; j++) if (Math.abs(M[j][i]) > Math.abs(M[pv][i])) pv = j;
+    var t = M[i]; M[i] = M[pv]; M[pv] = t;
+    if (Math.abs(M[i][i]) < 1e-12) return null;
+    for (j = i + 1; j < n; j++){ var f = M[j][i] / M[i][i]; for (k = i; k <= n; k++) M[j][k] -= f * M[i][k]; }
+  }
+  var x = new Array(n);
+  for (i = n - 1; i >= 0; i--){ var s = M[i][n]; for (j = i + 1; j < n; j++) s -= M[i][j] * x[j]; x[i] = s / M[i][i]; }
+  return x;
+}
+function wls(ks, ws, wt, deg){                    /* mínimos cuadrados ponderados */
+  var n = deg + 1, S = [], b = [], i, r, c;
+  for (r = 0; r < n; r++){ S.push(new Array(n).fill(0)); b.push(0); }
+  for (i = 0; i < ks.length; i++){
+    var bas = [1, ks[i], ks[i] * ks[i]].slice(0, n), W = wt[i];
+    for (r = 0; r < n; r++){ b[r] += W * bas[r] * ws[i]; for (c = 0; c < n; c++) S[r][c] += W * bas[r] * bas[c]; }
+  }
+  return solveLin(S, b, n);
+}
+function impliedForward(spot, T, r){
+  var xs = [], ys = [], i, K, c, p;
+  for (i = 0; i < MK.strikes.length; i++){
+    K = MK.strikes[i]; c = MK.calls[K]; p = MK.puts[K];
+    if (c && p && c.mid > 0 && p.mid > 0 && Math.abs(K - spot) < spot * 0.15){ xs.push(K); ys.push(c.mid - p.mid); }
+  }
+  var disc = Math.exp(-r * T), F = spot * Math.exp(r * T);
+  if (xs.length >= 2){                            /* C−P = disc·(F−K) */
+    var n = xs.length, mx = 0, my = 0;
+    for (i = 0; i < n; i++){ mx += xs[i]; my += ys[i]; }
+    mx /= n; my /= n;
+    var sxy = 0, sxx = 0;
+    for (i = 0; i < n; i++){ sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) * (xs[i] - mx); }
+    if (sxx > 0){
+      var slope = sxy / sxx, dd = -slope;
+      if (dd > 0.5 && dd <= 1.02){
+        disc = dd;
+        var ff = (my - slope * mx) / disc;
+        if (ff > spot * 0.7 && ff < spot * 1.3) F = ff;
+      }
+    }
+  }
+  return {F: F, disc: disc};
+}
+var AM_NIV = 80;   /* pasos del binomial para invertir la IV americana */
+
+/* IV AMERICANA: la σ que, en el mismo pricer americano (mismos dividendos y r),
+   reproduce el precio de mercado. Monótona en σ ⇒ Newton + bisección. */
+function ivAmerican(kind, price, S, K, T, r, q, divs){
+  var isC = kind === "call";
+  if (!(price > Math.max(isC ? S - K : K - S, 0) + 1e-9)) return NaN;
+  var F = S * Math.exp((r - q) * T), disc = Math.exp(-r * T);
+  var sig = iv76(isC, price, F, K, T, disc);
+  if (!(sig > 1e-3) || !isFinite(sig)) sig = 0.4;
+  var h = 0.005, it;
+  for (it = 0; it < 10; it++){
+    var pm = amPrice(kind, S, K, T, sig, r, q, AM_NIV, divs), diff = pm - price;
+    if (Math.abs(diff) < 1e-6) return sig;
+    var vega = (amPrice(kind, S, K, T, sig + h, r, q, AM_NIV, divs) - amPrice(kind, S, K, T, Math.max(1e-4, sig - h), r, q, AM_NIV, divs)) / (2 * h);
+    if (!(vega > 1e-9)) break;
+    var step = diff / vega;
+    if (step > 0.5 * sig) step = 0.5 * sig; else if (step < -0.5 * sig) step = -0.5 * sig;
+    sig -= step;
+    if (!(sig > 0)) sig = 1e-4; else if (sig > 6) sig = 6;
+  }
+  var lo = 1e-4, hi = 6, mid, b;
+  if (amPrice(kind, S, K, T, hi, r, q, AM_NIV, divs) < price) return NaN;
+  for (b = 0; b < 44; b++){ mid = (lo + hi) / 2; if (amPrice(kind, S, K, T, mid, r, q, AM_NIV, divs) > price) hi = mid; else lo = mid; }
+  return (lo + hi) / 2;
+}
+
+/* ---- SVI (Gatheral): w(k) = a + b·(ρ(k−m) + √((k−m)² + σ²)) ---- */
+function sviW(p, k){
+  var x = k - p[3];
+  return p[0] + p[1] * (p[2] * x + Math.sqrt(x * x + p[4] * p[4]));
+}
+function sviG(p, k){                 /* g(k)≥0 ⇒ sin arbitraje de mariposa */
+  var x = k - p[3], rt = Math.sqrt(x * x + p[4] * p[4]);
+  var w = p[0] + p[1] * (p[2] * x + rt);
+  if (w <= 0) return -1;
+  var wp = p[1] * (p[2] + x / rt), wpp = p[1] * p[4] * p[4] / (rt * rt * rt);
+  var t = 1 - k * wp / (2 * w);
+  return t * t - (wp * wp / 4) * (1 / w + 0.25) + wpp / 2;
+}
+function nelderMead(f, x0, stp, iters){
+  var n = x0.length, i, j, S = [x0.slice()], F = [f(x0)];
+  for (i = 0; i < n; i++){ var q = x0.slice(); q[i] += stp; S.push(q); F.push(f(q)); }
+  function order(){
+    var idx = S.map(function(_, z){ return z; }).sort(function(a, b){ return F[a] - F[b]; });
+    S = idx.map(function(z){ return S[z]; }); F = idx.map(function(z){ return F[z]; });
+  }
+  for (var it = 0; it < iters; it++){
+    order();
+    var c = new Array(n).fill(0);
+    for (i = 0; i < n; i++) for (j = 0; j < n; j++) c[j] += S[i][j] / n;
+    var xr = c.map(function(v, z){ return v + (v - S[n][z]); }), fr = f(xr);
+    if (fr < F[0]){
+      var xe = c.map(function(v, z){ return v + 2 * (v - S[n][z]); }), fe = f(xe);
+      if (fe < fr){ S[n] = xe; F[n] = fe; } else { S[n] = xr; F[n] = fr; }
+    }
+    else if (fr < F[n - 1]){ S[n] = xr; F[n] = fr; }
+    else {
+      var xc = c.map(function(v, z){ return v + 0.5 * (S[n][z] - v); }), fc = f(xc);
+      if (fc < F[n]){ S[n] = xc; F[n] = fc; }
+      else { for (i = 1; i <= n; i++){ S[i] = S[0].map(function(v, z){ return v + 0.5 * (S[i][z] - v); }); F[i] = f(S[i]); } }
+    }
+  }
+  order();
+  return {x: S[0], f: F[0]};
+}
+
+/* Calibración quasi-explicit (Zeliade): con (m,σ) fijos y el cambio y=(k−m)/σ,
+   w = a + d·y + c·√(y²+1) es LINEAL en (a,d,c) → mínimos cuadrados cerrados,
+   con las restricciones de Gatheral-Jacquier reparadas a mano. */
+function _sviFitFixed(ks, ws, wt, m, sig){
+  var A = [[0,0,0],[0,0,0],[0,0,0]], bb = [0,0,0], i, r, c2;
+  for (i = 0; i < ks.length; i++){
+    var y = (ks[i] - m) / sig, z = Math.sqrt(y * y + 1), bas = [1, y, z], W = wt[i];
+    for (r = 0; r < 3; r++){ bb[r] += W * bas[r] * ws[i]; for (c2 = 0; c2 < 3; c2++) A[r][c2] += W * bas[r] * bas[c2]; }
+  }
+  var sol = solveLin(A, bb, 3);
+  if (!sol) return null;
+  var a = sol[0], d = sol[1], c = sol[2];
+  if (c < 0) c = 0;                                             /* b≥0 */
+  if (Math.abs(d) > c) d = (d < 0 ? -1 : 1) * c;                /* |ρ|≤1 */
+  if (c + Math.abs(d) > 2 * sig){ var f = 2 * sig / (c + Math.abs(d) + 1e-12); c *= f; d *= f; }  /* Lee */
+  var rho = c > 1e-12 ? d / c : 0;
+  var minv = a + c * Math.sqrt(Math.max(0, 1 - rho * rho));
+  if (minv < 1e-8) a += (1e-8 - minv);
+  var p = [a, c / sig, rho, m, sig], sse = 0;
+  for (i = 0; i < ks.length; i++){ var e = sviW(p, ks[i]) - ws[i]; sse += wt[i] * e * e; }
+  return {p: p, sse: sse};
+}
+function fitSVI(ks, ws, wt, atmVar){
+  function obj(raw){ var f = _sviFitFixed(ks, ws, wt, raw[0], Math.exp(raw[1])); return f ? f.sse : 1e9; }
+  var best = null, starts = [[0, Math.log(0.1)], [0, Math.log(0.3)], [-0.05, Math.log(0.15)], [0.05, Math.log(0.2)]], si;
+  for (si = 0; si < starts.length; si++){
+    var r = nelderMead(obj, starts[si], 0.1, 300);
+    if (!best || r.f < best.f) best = r;
+  }
+  var fin = _sviFitFixed(ks, ws, wt, best.x[0], Math.exp(best.x[1]));
+  var p = fin ? fin.p : [Math.max(1e-4, atmVar), 0.05, 0, 0, 0.1];
+  var arb = true, kk;
+  for (kk = -0.95; kk <= 0.95; kk += 0.05){ if (sviG(p, kk) < -1e-6 || sviW(p, kk) <= 0){ arb = false; break; } }
+  return {p: p, arb: arb};
+}
+
+function buildSurface(){
+  SURF = {ok: false};
+  if (!MK.on || !MK.strikes.length || !MK.days) return;
+  var T = MK.days / 365, r = RATE, spot = MK.spot, i, K;
+  var fwd = impliedForward(spot, T, r), F = fwd.F, disc = fwd.disc;
+  var dv = [];
+  if (DIVMODE === "discretos"){
+    for (i = 0; i < DIVSCHED.length; i++){
+      var ty = DIVSCHED[i].ty;
+      if (ty > 0 && ty <= T) dv.push([ty, DIVSCHED[i].amount]);
+    }
+  }
+  var ks = [], ws = [], wt = [], mkt = [];
+  for (i = 0; i < MK.strikes.length; i++){
+    K = MK.strikes[i];
+    var isC = K >= F, row = isC ? MK.calls[K] : MK.puts[K];
+    if (!row || !(row.mid > 0)) continue;
+    var iv = ivAmerican(isC ? "call" : "put", row.mid, spot, K, T, r, DIVY, dv);
+    if (!(iv > 0.01 && iv < 6)) continue;
+    var k = Math.log(K / F);
+    if (Math.abs(k) > 1.0) continue;
+    ks.push(k); ws.push(iv * iv * T); wt.push(Math.max(bs76Vega(F, K, T, iv, disc), 1e-6));
+    mkt.push({K: K, iv: iv, k: k});
+  }
+  if (ks.length < 4){ SURF = {ok: false, F: F, T: T, n: ks.length}; return; }
+  function rmse(fn){
+    var e = 0, z;
+    for (z = 0; z < mkt.length; z++){
+      var wf = fn(mkt[z].k), ivf = wf > 0 ? Math.sqrt(wf / T) : 0;
+      e += (ivf - mkt[z].iv) * (ivf - mkt[z].iv);
+    }
+    return Math.sqrt(e / mkt.length);
+  }
+  var cq = wls(ks, ws, wt, 2);
+  if (!cq || cq[2] < 0){ var c2 = wls(ks, ws, wt, 1); cq = c2 ? [c2[0], c2[1], 0] : null; }
+  var quadFn = cq ? function(k){ return cq[0] + cq[1] * k + cq[2] * k * k; } : null;
+  var svi = fitSVI(ks, ws, wt, quadFn ? quadFn(0) : ws[Math.floor(ws.length / 2)]);
+  var sviFn = function(k){ return sviW(svi.p, k); };
+  var rq = quadFn ? rmse(quadFn) : 1e9, rs = rmse(sviFn);
+  var useSvi = svi.arb && isFinite(rs) && rs <= rq * 1.05;
+  if (!quadFn && !useSvi){ SURF = {ok: false, F: F, T: T, n: ks.length}; return; }
+  var chosen = useSvi ? sviFn : quadFn;
+  var flags = [];
+  for (i = 0; i < mkt.length; i++){
+    var wf = chosen(mkt[i].k), ivf = wf > 0 ? Math.sqrt(wf / T) : 0;
+    if (Math.abs(ivf - mkt[i].iv) > 0.05) flags.push(mkt[i].K);
+  }
+  SURF = {ok: true, F: F, T: T, kind: useSvi ? "svi" : "convexa", p: svi.p, c: cq, n: ks.length,
+          flags: flags, rmse: useSvi ? rs : rq, arb: useSvi ? true : !!(cq && cq[2] >= 0)};
+}
+function surfVol(K){
+  if (!SURF.ok) return 0;
+  var k = Math.log(K / SURF.F);
+  var w = SURF.kind === "svi" ? sviW(SURF.p, k)
+                              : (SURF.c[0] + SURF.c[1] * k + SURF.c[2] * k * k);
+  return w > 1e-8 ? Math.sqrt(w / SURF.T) : 0;
+}
+
+/* IV que usa una pata: la superficie ajustada si está y da positiva, si no la
+   IV cruda de la cadena, si no el respaldo. Siempre con el shift global. */
+function legVol(L){
+  var base = IVMAN, r = quoteOf(L), sv;
+  if (SURFMODE && SURF.ok && (sv = surfVol(L.k)) > 0) base = sv;
+  else if (r && r.iv) base = r.iv;
+  return Math.max(0.0001, base + VSHIFT / 100);
+}
+
+/* Precio de una opción según el modelo activo. */
+function optPrice(kind, S, K, T, sig, r, q, divs){
+  return MODEL === "american" ? amPrice(kind, S, K, T, sig, r, q, AM_NC, divs)
+                              : euPriceDiv(kind, S, K, T, sig, r, q, divs);
+}
+/* Precio de una pata a (S, tau). Solo precio: la curva lo evalúa cientos de veces. */
+function legPrice(L, S, tau){
+  if (L.kind === "stock") return S;
+  return optPrice(L.kind, S, L.k, tau, legVol(L), RATE, DIVY, activeDivs());
+}
+/* Precio + griegas de una pata para el marcador (sin signo de cantidad). */
+function legModel(L, S, tau){
+  if (L.kind === "stock") return {price: S, delta: 1, gamma: 0, vega: 0, theta: 0, rho: 0};
+  var v = legVol(L), dv = activeDivs();
+  if (MODEL === "american") return amGreeks(L.kind, S, L.k, tau, v, RATE, DIVY, dv);
+  var S0 = dv.length ? S - pvDivs(dv, 0, tau, RATE) : S;
+  return bsOne(L.kind, S0, L.k, tau, v, RATE, DIVY);
+}
+
+/* P&L de la posición a tau años y precio S, neto de prima. tau=0 → payoff(S). */
+function valueAt(S, tau){
+  var t = 0;
+  for (var i = 0; i < legs.length; i++){
+    var L = legs[i];
+    t += L.q * (legPrice(L, S, tau) - L.prem);
+  }
+  return t;
+}
+function tauNow(){ return Math.max(0, (DTE - elapsed) / 365); }
+
+/* Dividendos en la ventana [hoy+horizonte, vto], re-referenciados al instante
+   de pricing. Vacío en modo continuo. */
+function activeDivs(){
+  if (DIVMODE !== "discretos" || !DIVSCHED.length) return [];
+  var out = [], now = elapsed / 365, end = DTE / 365, i;
+  for (i = 0; i < DIVSCHED.length; i++){
+    var ty = DIVSCHED[i].ty;
+    if (ty > now && ty <= end) out.push([ty - now, DIVSCHED[i].amount]);
+  }
+  return out;
+}
+
+/* Tasa de la curva del Tesoro al plazo `days` (lineal, plana en los extremos). */
+function curveRate(days){
+  if (!CURVE || !CURVE.length) return null;
+  var y = Math.max(days, 0) / 365, p = CURVE;
+  if (y <= p[0][0]) return p[0][1];
+  if (y >= p[p.length - 1][0]) return p[p.length - 1][1];
+  for (var i = 1; i < p.length; i++){
+    if (y <= p[i][0]){
+      var x0 = p[i-1][0], y0 = p[i-1][1], x1 = p[i][0], y1 = p[i][1];
+      return y0 + (y1 - y0) * (y - x0) / (x1 - x0);
+    }
+  }
+  return p[p.length - 1][1];
+}
+function applyCurveRate(){
+  if (!rateAuto) return;
+  var r = curveRate(DTE);
+  if (r != null) RATE = r;
+}
+
+/* ================= payoff (siempre por acción; MULT solo presenta) ================= */
+function payoff(S){
+  var t = 0;
+  for (var i = 0; i < legs.length; i++){
+    var L = legs[i], q = L.q;
+    if (L.kind === "stock")      t += q * (S - L.prem);
+    else if (L.kind === "call")  t += q * (Math.max(S - L.k, 0) - L.prem);
+    else                        t += q * (Math.max(L.k - S, 0) - L.prem);
+  }
+  return t;
+}
+function netCost(){
+  var t = 0;
+  for (var i = 0; i < legs.length; i++) if (legs[i].kind !== "stock") t += legs[i].q * legs[i].prem;
+  return t;
+}
+
+/* ================= dominio del eje ================= */
+var STEP = 0.5;
+
+function niceStep(range, target){
+  if (!(range > 0)) return 1;
+  var raw = range / target, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
+}
+/* Redondea a la grilla del step, sin polvo de punto flotante. */
+function qstep(v, step){
+  var nd = step >= 1 ? 0 : Math.min(6, Math.ceil(-Math.log10(step)));
+  return parseFloat((Math.round(v / step) * step).toFixed(nd));
+}
+var lastCenter = null;
+
+function recomputeDomain(keepZone){
+  var pts = [S0];
+  legs.forEach(function(L){ pts.push(L.kind === "stock" ? L.prem : L.k); });
+  pts = pts.filter(function(v){ return isFinite(v) && v > 0; });
+  if (!pts.length) pts = [100];
+  var lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts);
+  var c = S0 > 0 ? S0 : (lo + hi) / 2;
+  /* Si cambió el subyacente, la zona vieja no significa nada: recentrar. */
+  if (lastCenter === null || Math.abs(c - lastCenter) > lastCenter * 0.02) keepZone = false;
+  lastCenter = c;
+  var span = Math.max(hi - c, c - lo, 0);
+  span = Math.max(span * 1.7, c * 0.32);
+  var step = niceStep(2 * span, 200);
+  STEP = step;
+  DOM.min = Math.max(0, qstep(c - span, step));
+  DOM.max = qstep(c + span, step);
+  [["zlo"], ["zhi"], ["spotM"]].forEach(function(pair){
+    var n = el(pair[0]);
+    n.min = DOM.min; n.max = DOM.max; n.step = step;
+  });
+  if (!keepZone){
+    zlo = c * 0.92; zhi = c * 1.12;
+    if (MK.sigma1){ zlo = c - MK.sigma1; zhi = c + MK.sigma1; }
+    spotM = c;
+  }
+  zlo = clamp(qstep(zlo, step)); zhi = clamp(qstep(zhi, step)); spotM = clamp(qstep(spotM, step));
+  el("zlo").value = zlo; el("zhi").value = zhi; el("spotM").value = spotM;
+  el("zloVal").textContent = fk(zlo); el("zhiVal").textContent = fk(zhi);
+  el("spotMVal").textContent = fk(spotM);
+}
+function clamp(v){ return Math.min(DOM.max, Math.max(DOM.min, v)); }
+
+/* ================= tabla de patas ================= */
+function strikeCell(L, i){
+  if (MK.on && MK.strikes.length && L.kind !== "stock"){
+    var o = "", listed = MK.strikes.indexOf(L.k) >= 0;
+    if (!listed) o += '<option value="' + L.k + '" selected>' + fk(L.k) + ' ·</option>';
+    for (var j = 0; j < MK.strikes.length; j++){
+      var k = MK.strikes[j];
+      o += '<option value="' + k + '"' + (k === L.k ? ' selected' : '') + '>' + fk(k) + '</option>';
+    }
+    return '<select data-i="' + i + '" data-f="k">' + o + '</select>';
+  }
+  return '<input type="number" step="1" value="' + L.k + '" data-i="' + i + '" data-f="k"' +
+         (L.kind === "stock" ? " disabled" : "") + '/>';
+}
+function quoteOf(L){
+  if (!MK.on || L.kind === "stock") return null;
+  var m = (L.kind === "call" ? MK.calls : MK.puts);
+  return m[L.k] || null;
+}
+function detailRow(L){
+  if (L.kind === "stock") return MK.on ? "subyacente · spot " + fk(MK.spot) + " " + MK.cur : "";
+  var r = quoteOf(L);
+  if (!MK.on) return "";
+  if (!r) return '<span class="stale">strike sin cotización en la cadena</span>';
+  var s = "bid " + f2(r.bid || 0) + " / ask " + f2(r.ask || 0);
+  if (r.src !== "mid") s += " · sin two-sided, uso " + (r.src === "last" ? "último" : "la punta");
+  if (r.iv) s += " · IV " + pct(r.iv);
+  s += " · OI " + r.oi + " · vol " + r.vol;
+  if (!r.vol) s += " · sin operar hoy";
+  return s;
+}
+function renderLegs(){
+  var tb = el("legsBody");
+  tb.innerHTML = "";
+  legs.forEach(function(L, i){
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="num"><input type="number" step="1" value="' + L.q + '" data-i="' + i + '" data-f="q"/></td>' +
+      '<td><select data-i="' + i + '" data-f="kind">' +
+        '<option value="call">call</option><option value="put">put</option><option value="stock">subyac.</option>' +
+      '</select></td>' +
+      '<td>' + strikeCell(L, i) + '</td>' +
+      '<td class="num"><input type="number" step="0.01" value="' + L.prem + '" data-i="' + i + '" data-f="prem"/></td>' +
+      '<td><button class="x" data-del="' + i + '" type="button" aria-label="quitar pata">✕</button></td>';
+    tr.querySelector('select[data-f="kind"]').value = L.kind;
+    tb.appendChild(tr);
+    var d = detailRow(L);
+    if (d){
+      var dr = document.createElement("tr");
+      dr.className = "det";
+      dr.innerHTML = '<td colspan="5"></td>';
+      dr.firstChild.innerHTML = d;
+      tb.appendChild(dr);
+    }
+  });
+}
+
+el("legsBody").addEventListener("input", function(e){
+  var t = e.target, i = t.getAttribute("data-i"), f = t.getAttribute("data-f");
+  if (i === null) return;
+  i = parseInt(i, 10);
+  var v = (f === "kind") ? t.value : parseFloat(t.value);
+  if (f !== "kind" && isNaN(v)) return;
+  legs[i][f] = v;
+  if (f === "kind"){
+    if (v === "stock" && MK.on) legs[i].prem = MK.spot;
+    priceLeg(legs[i]); renderLegs(); recomputeDomain(true);
+  } else if (f === "k"){
+    priceLeg(legs[i]); renderLegs(); recomputeDomain(true);
+  }
+  clearPreset(); render();
+});
+el("legsBody").addEventListener("change", function(e){
+  if (e.target.getAttribute("data-f") === "k") renderLegs();
+});
+el("legsBody").addEventListener("click", function(e){
+  var d = e.target.getAttribute("data-del");
+  if (d === null) return;
+  legs.splice(parseInt(d, 10), 1);
+  renderLegs(); recomputeDomain(true); clearPreset(); render();
+});
+
+function addLeg(kind){
+  var L = {q: 1, kind: kind, k: kind === "stock" ? 0 : snap(S0),
+           prem: kind === "stock" ? (MK.on ? MK.spot : 100) : 4};
+  priceLeg(L);
+  legs.push(L);
+  renderLegs(); recomputeDomain(true); clearPreset(); render();
+}
+el("btnAddCall").addEventListener("click", function(){ addLeg("call"); });
+el("btnAddPut").addEventListener("click", function(){ addLeg("put"); });
+el("btnAddStock").addEventListener("click", function(){ addLeg("stock"); });
+
+/* ================= precios de mercado sobre las patas ================= */
+function snap(k){
+  if (!MK.strikes.length) return k;
+  var best = MK.strikes[0], bd = Math.abs(k - best);
+  for (var i = 1; i < MK.strikes.length; i++){
+    var d = Math.abs(k - MK.strikes[i]);
+    if (d < bd){ bd = d; best = MK.strikes[i]; }
+  }
+  return best;
+}
+/* Prima a precio de mercado. `cross` cotiza contra vos: pagás el ask al
+   comprar, cobrás el bid al vender. */
+function priceLeg(L){
+  if (!MK.on) return false;
+  if (L.kind === "stock"){ L.prem = MK.spot; return true; }
+  var r = quoteOf(L);
+  if (!r) return false;
+  var p = r.mid;
+  if (SIDE === "cross" && r.bid && r.ask) p = (L.q >= 0 ? r.ask : r.bid);
+  L.prem = Math.round(p * 100) / 100;
+  return true;
+}
+function priceAll(){ legs.forEach(priceLeg); }
+
+/* ================= presets ================= */
+function applyPreset(name){
+  var scale = (MK.on && MK.spot) ? MK.spot / 100 : 1;
+  legs = PRESETS[name].map(function(a){
+    var L = {q: a[0], kind: a[1], k: a[2], prem: a[3]};
+    if (L.kind === "stock"){
+      L.k = 0; L.prem = MK.on ? MK.spot : a[3];
+    } else {
+      L.k = snap(Math.round(a[2] * scale * 100) / 100);
+      L.prem = Math.round(a[3] * scale * 100) / 100;
+      priceLeg(L);
+    }
+    return L;
+  });
+  activePreset = name;
+  renderLegs(); recomputeDomain(true); render();
+}
+function clearPreset(){
+  activePreset = null;
+  var b = document.querySelector("#presets button.on");
+  if (b) b.classList.remove("on");
+}
+(function buildPresetButtons(){
+  var pc = el("presets");
+  Object.keys(PRESETS).forEach(function(name){
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = name;
+    b.setAttribute("data-p", name);
+    b.addEventListener("click", function(){
+      clearPreset(); b.classList.add("on"); applyPreset(name);
+    });
+    pc.appendChild(b);
+  });
+})();
+function markPreset(name){
+  clearPreset();
+  var b = document.querySelector('#presets button[data-p="' + name + '"]');
+  if (b){ b.classList.add("on"); activePreset = name; }
+}
+
+/* ================= zona y precio al vencimiento ================= */
+el("zlo").addEventListener("input", function(e){
+  zlo = parseFloat(e.target.value);
+  if (zlo > zhi){ zhi = zlo; el("zhi").value = zhi; el("zhiVal").textContent = fk(zhi); }
+  el("zloVal").textContent = fk(zlo);
+  render();
+});
+el("zhi").addEventListener("input", function(e){
+  zhi = parseFloat(e.target.value);
+  if (zhi < zlo){ zlo = zhi; el("zlo").value = zlo; el("zloVal").textContent = fk(zlo); }
+  el("zhiVal").textContent = fk(zhi);
+  render();
+});
+el("spotM").addEventListener("input", function(e){
+  spotM = parseFloat(e.target.value);
+  el("spotMVal").textContent = fk(spotM);
+  render();
+});
+
+/* ================= liquidación pata por pata ================= */
+function legName(L){
+  var side = L.q >= 0 ? "Long" : "Short";
+  var n = Math.abs(L.q) === 1 ? "" : Math.abs(L.q) + "× ";
+  if (L.kind === "stock") return side + " " + n + "subyacente @ " + fk(L.prem);
+  return side + " " + n + (L.kind === "call" ? "call" : "put") + " K=" + fk(L.k);
+}
+function renderSettle(){
+  var tb = el("settleBody");
+  tb.innerHTML = "";
+  if (!legs.length){
+    tb.innerHTML = '<tr><td colspan="5" style="color:var(--faint)">Sin patas cargadas.</td></tr>';
+    return;
+  }
+  var totIntr = 0, totPrem = 0;
+  legs.forEach(function(L){
+    var intr, state, cls, expr;
+    if (L.kind === "stock"){
+      intr = L.q * (spotM - L.prem);
+      state = "lineal"; cls = "lin";
+      expr = "S − " + fk(L.prem) + " = " + f2(spotM - L.prem);
+    } else {
+      var iv = L.kind === "call" ? Math.max(spotM - L.k, 0) : Math.max(L.k - spotM, 0);
+      var d = L.kind === "call" ? spotM - L.k : L.k - spotM;
+      state = Math.abs(d) < 0.005 ? "ATM" : (d > 0 ? "ITM" : "OTM");
+      cls = state === "ATM" ? "atm" : (state === "ITM" ? "itm" : "otm");
+      expr = "max(" + (L.kind === "call" ? "S − " + fk(L.k) : fk(L.k) + " − S") + ", 0) = " +
+             (state === "OTM" ? "0" : grp(iv, 2));
+      intr = L.q * iv;
+    }
+    var prem = (L.kind === "stock") ? 0 : -L.q * L.prem;
+    totIntr += intr; totPrem += prem;
+    var tr = document.createElement("tr");
+    tr.innerHTML = '<td></td><td><span class="pill ' + cls + '"></span></td><td></td>' +
+                   '<td class="num"></td><td class="num"></td>';
+    var td = tr.querySelectorAll("td");
+    td[0].textContent = legName(L);
+    tr.querySelector(".pill").textContent = state;
+    td[2].textContent = expr;
+    td[3].textContent = (L.kind === "stock") ? "—" : fm(prem);
+    td[4].textContent = fm(intr + prem);
+    tb.appendChild(tr);
+  });
+  var tr2 = document.createElement("tr");
+  tr2.className = "total";
+  tr2.innerHTML = '<td colspan="2"></td><td class="num"></td><td class="num"></td><td class="num"></td>';
+  var t2 = tr2.querySelectorAll("td");
+  t2[0].textContent = "Resultado en S = " + fk(spotM) + " · " + unit();
+  t2[1].textContent = fm(totIntr);
+  t2[2].textContent = fm(totPrem);
+  t2[3].textContent = fm(totIntr + totPrem);
+  t2[3].style.color = (totIntr + totPrem) >= 0 ? "var(--grn)" : "var(--red)";
+  tb.appendChild(tr2);
+}
+
+/* ================= álgebra por tramos ================= */
+function renderRegions(){
+  var box = el("regions");
+  box.innerHTML = "";
+  if (!legs.length) return;
+  var ks = [];
+  legs.forEach(function(L){ if (L.kind !== "stock" && ks.indexOf(L.k) < 0) ks.push(L.k); });
+  ks.sort(function(a, b){ return a - b; });
+  var gap = Math.max(0.01, S0 * 0.1);
+  var bounds = [-Infinity].concat(ks, [Infinity]);
+  for (var r = 0; r < bounds.length - 1; r++){
+    var loB = bounds[r], hiB = bounds[r + 1];
+    var probe = (loB === -Infinity) ? hiB - gap : (hiB === Infinity ? loB + gap : (loB + hiB) / 2);
+    var a = 0, b = 0, itm = [];
+    legs.forEach(function(L){
+      if (L.kind === "stock"){ a += L.q; b -= L.q * L.prem; return; }
+      b -= L.q * L.prem;
+      var inMoney = L.kind === "call" ? probe > L.k : probe < L.k;
+      if (inMoney){
+        itm.push((L.q >= 0 ? "" : "−") + (L.kind === "call" ? "C" : "P") + fk(L.k));
+        if (L.kind === "call"){ a += L.q; b -= L.q * L.k; }
+        else { a -= L.q; b += L.q * L.k; }
+      }
+    });
+    var dom = (loB === -Infinity) ? "S < " + fk(hiB)
+            : (hiB === Infinity  ? "S > " + fk(loB)
+            : fk(loB) + " < S < " + fk(hiB));
+    var expr;
+    if (Math.abs(a) < 1e-9) expr = "π = " + f2(b) + "  (plano)";
+    else expr = "π = " + (Math.abs(a) === 1 ? (a < 0 ? "−S" : "S") : f2(a) + "·S") +
+                (b >= 0 ? " + " + grp(b, 2) : " − " + grp(Math.abs(b), 2));
+    var here = spotM > (loB === -Infinity ? -1e12 : loB) && spotM <= (hiB === Infinity ? 1e12 : hiB);
+    var d = document.createElement("div");
+    d.className = "region" + (here ? " here" : "");
+    var dDom = document.createElement("div");
+    dDom.innerHTML = '<div class="dom"></div><div class="sub"></div>';
+    dDom.querySelector(".dom").textContent = dom;
+    dDom.querySelector(".sub").textContent = itm.length ? "ITM: " + itm.join(", ") : "todas OTM";
+    var dEx = document.createElement("div");
+    dEx.innerHTML = '<div class="expr"></div><div class="sub"></div>';
+    dEx.querySelector(".expr").textContent = expr;
+    dEx.querySelector(".sub").textContent = here
+      ? "estás acá · π(" + fk(spotM) + ") = " + fm(a * spotM + b) + " " + unit()
+      : (Math.abs(a) < 1e-9 ? "pendiente cero: nada que ganar ni perder en este tramo"
+                            : "pendiente " + f2(a) + " por punto de subyacente");
+    d.appendChild(dDom); d.appendChild(dEx);
+    box.appendChild(d);
+  }
+}
+
+/* ================= chart en canvas ================= */
+var cv = el("chart"), cx2d = cv.getContext("2d");
+
+function drawChart(xs, ys, ys2, bes){
+  var W = cv.width, H = cv.height;
+  var pL = 66, pR = 18, pT = 24, pB = 46;
+  var SMIN = DOM.min, SMAX = DOM.max;
+  var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+  if (ys2){
+    lo = Math.min(lo, Math.min.apply(null, ys2));
+    hi = Math.max(hi, Math.max.apply(null, ys2));
+  }
+  var slopeR = (ys[ys.length-1] - ys[ys.length-2]) / (xs[xs.length-1] - xs[xs.length-2]);
+  var slopeL = (ys[1] - ys[0]) / (xs[1] - xs[0]);
+  var pad = Math.max(S0 * 0.02, (hi - lo) * 0.18);
+  var YMIN = lo - pad, YMAX = hi + pad;
+  if (YMAX - YMIN < S0 * 0.04){ YMAX += S0 * 0.02; YMIN -= S0 * 0.02; }
+
+  var px = function(S){ return pL + (S - SMIN) / (SMAX - SMIN) * (W - pL - pR); };
+  var py = function(v){ return pT + (1 - (v - YMIN) / (YMAX - YMIN)) * (H - pT - pB); };
+
+  cx2d.clearRect(0, 0, W, H);
+  cx2d.font = "10px ui-monospace, Menlo, Consolas, monospace";
+
+  /* zona esperada */
+  cx2d.fillStyle = "rgba(74,222,128,.09)";
+  cx2d.fillRect(px(zlo), pT, Math.max(0, px(zhi) - px(zlo)), H - pT - pB);
+  cx2d.fillStyle = "#4ade80";
+  cx2d.textAlign = "center";
+  cx2d.fillText("zona esperada", (px(zlo) + px(zhi)) / 2, pT - 8);
+
+  /* grilla Y */
+  var ystep = niceStep(YMAX - YMIN, 6), ynd = ystep < 1 ? 2 : 0;
+  cx2d.textAlign = "right"; cx2d.fillStyle = "#84927f";
+  for (var yv = Math.ceil(YMIN / ystep) * ystep; yv <= YMAX; yv += ystep){
+    if (Math.abs(yv) < ystep * 1e-6) continue;
+    cx2d.strokeStyle = "#1f2b21"; cx2d.lineWidth = 1;
+    cx2d.beginPath(); cx2d.moveTo(pL, py(yv)); cx2d.lineTo(W - pR, py(yv)); cx2d.stroke();
+    cx2d.fillText(grp(yv * MULT, ynd), pL - 8, py(yv) + 3);
+  }
+  /* grilla X */
+  var xstep = niceStep(SMAX - SMIN, 8), xnd = xstep < 1 ? 2 : 0;
+  cx2d.textAlign = "center";
+  for (var g = Math.ceil(SMIN / xstep) * xstep; g <= SMAX; g += xstep){
+    cx2d.strokeStyle = "#1f2b21"; cx2d.lineWidth = 1;
+    cx2d.beginPath(); cx2d.moveTo(px(g), pT); cx2d.lineTo(px(g), H - pB); cx2d.stroke();
+    cx2d.fillText(grp(g, xnd), px(g), H - pB + 16);
+  }
+  /* ejes */
+  var yz = py(0);
+  cx2d.strokeStyle = "#2c3d2e"; cx2d.lineWidth = 1.5;
+  cx2d.beginPath(); cx2d.moveTo(pL, pT); cx2d.lineTo(pL, H - pB); cx2d.stroke();
+  cx2d.beginPath(); cx2d.moveTo(pL, yz); cx2d.lineTo(W - pR, yz); cx2d.stroke();
+  cx2d.fillStyle = "#4c574d";
+  cx2d.fillText("PRECIO DEL SUBYACENTE AL VENCIMIENTO" + (MK.on ? " · " + MK.sym : ""),
+                (pL + W - pR) / 2, H - 8);
+
+  /* strikes */
+  cx2d.strokeStyle = "rgba(125,211,252,.55)"; cx2d.lineWidth = 1;
+  cx2d.setLineDash([3, 5]);
+  legs.forEach(function(L){
+    if (L.kind === "stock" || L.k < SMIN || L.k > SMAX) return;
+    cx2d.beginPath(); cx2d.moveTo(px(L.k), pT); cx2d.lineTo(px(L.k), H - pB); cx2d.stroke();
+  });
+  cx2d.setLineDash([]);
+
+  /* spot real */
+  if (MK.on && MK.spot >= SMIN && MK.spot <= SMAX){
+    cx2d.strokeStyle = "rgba(251,191,36,.8)"; cx2d.setLineDash([2, 4]);
+    cx2d.beginPath(); cx2d.moveTo(px(MK.spot), pT); cx2d.lineTo(px(MK.spot), H - pB); cx2d.stroke();
+    cx2d.setLineDash([]);
+    cx2d.fillStyle = "#fbbf24"; cx2d.textAlign = "center";
+    cx2d.fillText("spot hoy", px(MK.spot), pT + 12);
+  }
+
+  /* silueta del payoff */
+  cx2d.strokeStyle = "#e8f0e9"; cx2d.lineWidth = 3; cx2d.lineJoin = "round";
+  cx2d.beginPath();
+  for (var i = 0; i < xs.length; i++){ var X = px(xs[i]), Y = py(ys[i]); i ? cx2d.lineTo(X, Y) : cx2d.moveTo(X, Y); }
+  cx2d.stroke();
+
+  /* P&L a modelo al horizonte */
+  if (ys2){
+    cx2d.strokeStyle = "#fbbf24"; cx2d.lineWidth = 2; cx2d.setLineDash([7, 5]);
+    cx2d.beginPath();
+    for (var j = 0; j < xs.length; j++){ var X2 = px(xs[j]), Y2 = py(ys2[j]); j ? cx2d.lineTo(X2, Y2) : cx2d.moveTo(X2, Y2); }
+    cx2d.stroke(); cx2d.setLineDash([]);
+    cx2d.fillStyle = "#fbbf24"; cx2d.textAlign = "right";
+    cx2d.fillText(elapsed > 0 ? "T+" + elapsed + "d" : "hoy", W - pR - 4, Math.max(pT + 10, py(ys2[ys2.length-1]) - 8));
+  }
+
+  /* breakevens */
+  bes.forEach(function(b){
+    cx2d.strokeStyle = "#fbbf24"; cx2d.lineWidth = 2.5;
+    cx2d.fillStyle = "#090c0a";
+    cx2d.beginPath(); cx2d.arc(px(b), yz, 6, 0, 2 * Math.PI); cx2d.fill(); cx2d.stroke();
+    cx2d.fillStyle = "#fbbf24"; cx2d.textAlign = "center";
+    cx2d.fillText(fk(b), px(b), yz - 12);
+  });
+
+  /* marcador del precio al vencimiento */
+  var pS = payoff(spotM);
+  cx2d.strokeStyle = "#4ade80"; cx2d.lineWidth = 1.5;
+  cx2d.beginPath(); cx2d.moveTo(px(spotM), pT); cx2d.lineTo(px(spotM), H - pB); cx2d.stroke();
+  cx2d.fillStyle = "#090c0a"; cx2d.strokeStyle = "#4ade80"; cx2d.lineWidth = 3;
+  cx2d.beginPath(); cx2d.arc(px(spotM), py(pS), 7, 0, 2 * Math.PI); cx2d.fill(); cx2d.stroke();
+  cx2d.fillStyle = "#4ade80"; cx2d.textAlign = "center";
+  cx2d.fillText(fm(pS), px(spotM), py(pS) - 14);
+
+  return {slopeL: slopeL, slopeR: slopeR, lo: lo, hi: hi};
+}
+
+/* ================= render principal ================= */
+function render(){
+  el("zloVal").textContent = fk(zlo);
+  el("zhiVal").textContent = fk(zhi);
+
+  /* Grilla uniforme + los strikes exactos: los quiebres caen justo ahí. */
+  var SMIN = DOM.min, SMAX = DOM.max, N = 420, i;
+  var xs = [];
+  for (i = 0; i <= N; i++) xs.push(SMIN + (SMAX - SMIN) * i / N);
+  legs.forEach(function(L){ if (L.kind !== "stock" && L.k > SMIN && L.k < SMAX) xs.push(L.k); });
+  xs.sort(function(a, b){ return a - b; });
+  var ys = xs.map(payoff);
+
+  /* Curva de P&L antes del vencimiento (marca a modelo). A tau=0 coincide. */
+  var tau = tauNow();
+  var ys2 = (tau > 0 && legs.length) ? xs.map(function(S){ return valueAt(S, tau); }) : null;
+
+  /* breakevens: cruces de la silueta con el cero */
+  var bes = [];
+  for (i = 1; i < xs.length; i++){
+    if ((ys[i-1] < 0 && ys[i] >= 0) || (ys[i-1] > 0 && ys[i] <= 0)){
+      var t = Math.abs(ys[i-1]) / (Math.abs(ys[i-1]) + Math.abs(ys[i]));
+      bes.push(xs[i-1] + t * (xs[i] - xs[i-1]));
+    }
+  }
+
+  var ch = drawChart(xs, ys, ys2, bes);
+
+  /* ---------- lecturas ---------- */
+  var net = netCost();
+  el("rNet").textContent = net > 0 ? "débito " + fm(net) : (net < 0 ? "crédito " + fm(-net) : "cero");
+  el("rNet").className = "n" + (net <= 0 ? " pos" : "");
+  el("rMax").textContent = ch.slopeR > 0.001 ? "ilimitada" : fm(ch.hi);
+  var lossUnlimited = ch.slopeL > 0.001 || ch.slopeR < -0.001;
+  el("rMin").textContent = lossUnlimited ? "ilimitada" : fm(ch.lo);
+  el("rMin").className = "n" + (lossUnlimited ? " neg" : "");
+  el("rBe").textContent = bes.length ? bes.map(fk).join(" / ") : "ninguno";
+
+  var dir = ch.slopeR > 0.05 ? "Alcista"
+          : (ch.slopeR < -0.05 ? "Bajista"
+          : (ch.slopeL < -0.05 ? "Alcista" : (ch.slopeL > 0.05 ? "Bajista" : "Neutral")));
+  if (Math.abs(ch.slopeR) < 0.05 && Math.abs(ch.slopeL) < 0.05) dir = "Neutral en dirección";
+  var thr = Math.max(0.25, S0 * 0.0025);
+  var convex = (payoff(SMIN) + payoff(SMAX)) / 2 - payoff(S0);
+  el("rDir").textContent = dir;
+  el("rVol").textContent = convex > thr ? "Larga volatilidad"
+                        : (convex < -thr ? "Corta volatilidad" : "Sin vista de volatilidad");
+
+  var pLo = payoff(zlo), pHi = payoff(zhi), pMid = payoff((zlo + zhi) / 2);
+  var best = Math.max(pLo, pHi, pMid), worst = Math.min(pLo, pHi, pMid);
+  var flat = Math.max(0.15, S0 * 0.0015), v;
+  if (!legs.length){
+    v = "Agregá una pata o elegí un preset.";
+  } else if (Math.abs(best - worst) < flat){
+    v = "Dentro de tu zona esperada el resultado es prácticamente plano (" + fm(pMid) + "). La estructura no expresa ninguna vista sobre el rango donde creés que va a estar el precio — o cobrás la prima y listo, o la estructura está mal elegida.";
+  } else if (worst >= 0){
+    v = "Dentro de la zona esperada la estructura siempre gana: entre " + fm(worst) + " y " + fm(best) + ". Si tu vista se cumple, esto paga en todo el rango.";
+  } else if (best <= 0){
+    v = "Dentro de la zona esperada la estructura siempre pierde: entre " + fm(worst) + " y " + fm(best) + ". La vista y el payoff apuntan a lados distintos.";
+  } else {
+    v = "La zona esperada cruza un breakeven: va de " + fm(worst) + " a " + fm(best) + ". El resultado depende de dónde caiga dentro del rango, así que la recomendación tiene que justificar el punto central, no solo la dirección.";
+  }
+  el("verdict").textContent = v;
+
+  el("spotMVal").textContent = fk(spotM);
+  renderSettle();
+  renderRegions();
+  renderGreeks();
+}
+
+/* ================= Black-Scholes · griegas y P&L ================= */
+function renderGreeks(){
+  var Sx = clamp(spotM), tau = tauNow();
+  var net = {price: 0, delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0}, rows = [];
+  legs.forEach(function(L){
+    var m = legModel(L, Sx, tau);
+    var g = {price: L.q * m.price, delta: L.q * m.delta, gamma: L.q * m.gamma,
+             vega: L.q * m.vega / 100, theta: L.q * m.theta / 365, rho: L.q * m.rho / 100};
+    net.price += g.price; net.delta += g.delta; net.gamma += g.gamma;
+    net.vega += g.vega; net.theta += g.theta; net.rho += g.rho;
+    rows.push({L: L, g: g});
+  });
+  var pnl = valueAt(Sx, tau);
+  el("gPnl").textContent = fm(pnl);
+  el("gPnl").style.color = pnl >= 0 ? "var(--grn)" : "var(--red)";
+  el("gVal").textContent = fm(net.price);
+  el("gDelta").textContent = grp(net.delta * MULT, 3);
+  el("gGamma").textContent = grp(net.gamma * MULT, 4);
+  el("gTheta").textContent = fm(net.theta);
+  el("gVega").textContent = fm(net.vega);
+  el("gRho").textContent = fm(net.rho);
+
+  /* Prima de ejercicio anticipado = americano − europeo. Solo en americano. */
+  var eep = 0, dv = activeDivs();
+  if (MODEL === "american"){
+    legs.forEach(function(L){
+      if (L.kind === "stock") return;
+      var v = legVol(L);
+      eep += L.q * (amPrice(L.kind, Sx, L.k, tau, v, RATE, DIVY, AM_N, dv)
+                  - euPriceDiv(L.kind, Sx, L.k, tau, v, RATE, DIVY, dv));
+    });
+  }
+  el("gStatus").innerHTML = "";
+  el("gStatus").appendChild(document.createTextNode(
+    (MODEL === "american" ? "Americano (binomial " + AM_N + ")" : "Europeo (Black-Scholes)") +
+    " · S = " + fk(Sx) + " · " + Math.round(tau * 365) + "d" +
+    (VSHIFT ? " · IV " + (VSHIFT > 0 ? "+" : "−") + Math.abs(VSHIFT) + "pt" : "") +
+    " · r " + (RATE * 100).toFixed(2) + "% " +
+    (rateAuto && CURVE ? "(curva @" + Math.round(DTE) + "d)" : "(manual)") +
+    (DIVMODE === "discretos"
+      ? " · " + (dv.length ? dv.length + " ex-div en ventana" + (DIVEST ? " (est)" : "") : "sin ex-div antes del vto")
+      : " · div q=" + (DIVY * 100).toFixed(1) + "%") +
+    (MODEL === "american" ? " · ejercicio antic. " + fm(eep) : "") +
+    " · " + unit()));
+
+  var sf = el("gSurf");
+  if (SURFMODE && SURF.ok)
+    sf.textContent = "IV: " + (SURF.kind === "svi" ? "SVI" : "sonrisa convexa") + " (IV americana) · " +
+      SURF.n + " strikes · fwd " + fk(SURF.F) + " · RMSE " + (SURF.rmse * 100).toFixed(2) + "pt · " +
+      (SURF.arb ? "sin arbitraje ✓" : "convexa") +
+      (SURF.flags.length ? " · " + SURF.flags.length + " sospechoso(s): " +
+        SURF.flags.slice(0, 6).map(fk).join(", ") : " · sin outliers");
+  else if (SURFMODE)
+    sf.textContent = "IV: superficie no disponible (pocos strikes con cotización) — uso la IV de la cadena";
+  else
+    sf.textContent = "IV: de la cadena (cruda, por contrato)";
+
+  var tb = el("greeksBody");
+  tb.innerHTML = "";
+  if (!legs.length){
+    tb.innerHTML = '<tr><td colspan="7" style="color:var(--faint)">Sin patas cargadas.</td></tr>';
+    return;
+  }
+  rows.forEach(function(R){
+    var tr = document.createElement("tr");
+    tr.innerHTML = '<td></td><td class="num"></td><td class="num"></td><td class="num"></td>' +
+                   '<td class="num"></td><td class="num"></td><td class="num"></td>';
+    var td = tr.querySelectorAll("td");
+    td[0].textContent = legName(R.L);
+    td[1].textContent = R.L.kind === "stock" ? "—" : pct(legVol(R.L));
+    td[2].textContent = grp(R.g.delta * MULT, 3);
+    td[3].textContent = grp(R.g.gamma * MULT, 4);
+    td[4].textContent = fm(R.g.theta);
+    td[5].textContent = fm(R.g.vega);
+    td[6].textContent = fm(R.g.rho);
+    tb.appendChild(tr);
+  });
+}
+
+/* ================= capa de datos ================= */
+function led(cls){
+  el("led").className = "led" + (cls ? " " + cls : "");
+}
+function say(msg, cls){
+  el("mstate").textContent = msg;
+  el("mstate").className = cls || "";
+  led(cls === "ok" ? "ok" : cls === "err" ? "err" : cls === "busy" ? "busy" : "");
+}
+function api(path){
+  var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 40000) : null;
+  return fetch(path, ctl ? {signal: ctl.signal} : undefined)
+    .then(function(r){
+      return r.text().then(function(txt){
+        var j;
+        try { j = JSON.parse(txt); }
+        catch (e){ throw new Error("respuesta ilegible del servidor (HTTP " + r.status + ")"); }
+        if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+        return j;
+      });
+    })
+    .then(function(j){ if (timer) clearTimeout(timer); return j; },
+          function(e){ if (timer) clearTimeout(timer); throw e; });
+}
+function fillExpiries(list, keep){
+  var s = el("exp");
+  s.innerHTML = "";
+  if (!list.length){
+    s.innerHTML = "<option>sin opciones listadas</option>";
+    s.disabled = true;
+    return;
+  }
+  list.forEach(function(e){
+    var o = document.createElement("option");
+    o.value = e;
+    var d = daysTo(e);
+    o.textContent = e + (d === null ? "" : "  (" + d + "d)");
+    s.appendChild(o);
+  });
+  s.disabled = false;
+  s.value = (keep && list.indexOf(keep) >= 0) ? keep : pickExpiry(list);
+}
+/* El primer vencimiento suele ser 0 DTE: primas de 0.01, gamma pura. Se arranca en ~un mes. */
+function pickExpiry(list){
+  for (var i = 0; i < list.length; i++){
+    var d = daysTo(list[i]);
+    if (d !== null && d >= 21) return list[i];
+  }
+  return list[list.length - 1];
+}
+function daysTo(e){
+  var p = /^(\d{4})-(\d{2})-(\d{2})$/.exec(e);
+  if (!p) return null;
+  var d = Date.UTC(+p[1], +p[2] - 1, +p[3]);
+  return Math.max(0, Math.round((d - Date.now()) / 86400000));
+}
+function loadTicker(sym){
+  sym = (sym || el("tk").value || "").trim().toUpperCase();
+  if (!sym){ say("Escribí un ticker.", "err"); return; }
+  el("tk").value = sym;
+  markQuick(sym);
+  var my = ++REQ;
+  say("Pidiendo " + sym + "…", "busy");
+  api("/api/load?t=" + encodeURIComponent(sym)).then(function(j){
+    if (my !== REQ) return;
+    MK.sym = j.symbol; MK.spot = j.price; MK.cur = j.currency || "USD";
+    MK.chg = (typeof j.changePct === "number") ? j.changePct : null;
+    MK.rv20 = j.rv20; MK.name = j.name || null;
+    MK.expiries = j.expiries || []; MK.provider = j.provider; MK.asof = j.asof;
+    MK.on = true; S0 = MK.spot;
+    loadDivs(MK.sym);
+    if (rateAuto && !CURVE && typeof j.riskFree === "number" && j.riskFree > 0) RATE = j.riskFree;
+    applyCurveRate();
+    syncBs();
+    fillExpiries(MK.expiries, MK.expiry);
+    showMarket();
+    if (MK.expiries.length){
+      loadChain(el("exp").value);
+    } else {
+      MK.expiry = null; MK.calls = {}; MK.puts = {}; MK.strikes = [];
+      if (activePreset) applyPreset(activePreset); else { renderLegs(); recomputeDomain(false); render(); }
+      say(MK.sym + " a " + fk(MK.spot) + " " + MK.cur + " · sin opciones listadas: strikes y primas a mano.", "ok");
+    }
+  }).catch(function(e){
+    if (my !== REQ) return;
+    say("No pude traer " + sym + ": " + e.message, "err");
+  });
+}
+function loadChain(expiry){
+  if (!MK.sym || !expiry) return;
+  var sym = MK.sym, my = ++REQ;
+  say("Trayendo la cadena de " + sym + " " + expiry + "…", "busy");
+  api("/api/chain?t=" + encodeURIComponent(sym) + "&e=" + encodeURIComponent(expiry))
+  .then(function(j){
+    if (my !== REQ) return;
+    MK.expiry = j.expiry; MK.days = j.days; MK.atmIV = j.atmIV; MK.sigma1 = j.sigma1;
+    if (j.spot){ MK.spot = j.spot; S0 = j.spot; }
+    if (j.name) MK.name = j.name;
+    if (MK.days != null){ DTE = MK.days; elapsed = 0; }
+    if (MK.atmIV) IVMAN = MK.atmIV;
+    applyCurveRate();
+    syncBs();
+    MK.calls = {}; MK.puts = {};
+    var ks = {};
+    j.calls.forEach(function(r){ MK.calls[r.k] = r; ks[r.k] = 1; });
+    j.puts.forEach(function(r){ MK.puts[r.k] = r; ks[r.k] = 1; });
+    MK.strikes = Object.keys(ks).map(parseFloat).sort(function(a, b){ return a - b; });
+    MK.on = true; MK.provider = j.provider; MK.asof = j.asof;
+    buildSurface();
+    showMarket();
+    if (activePreset) applyPreset(activePreset);
+    else {
+      legs.forEach(function(L){ if (L.kind !== "stock") L.k = snap(L.k); });
+      priceAll(); renderLegs(); recomputeDomain(true); render();
+    }
+    var extra = (j.listed > j.shown) ? " · " + j.shown + " de " + j.listed + " strikes (cercanos al spot)" : "";
+    say(MK.sym + (MK.name ? " · " + MK.name : "") + " a " + fk(MK.spot) + " " + MK.cur +
+        " · vto. " + j.expiry + " (" + j.days + "d) · IV ATM " + (j.atmIV ? pct(j.atmIV) : "n/d") +
+        " · " + j.provider + " " + j.asof + extra, "ok");
+  }).catch(function(e){
+    if (my !== REQ) return;
+    say("Cadena de " + sym + " " + expiry + " no disponible: " + e.message + " · el resto sigue andando.", "err");
+  });
+}
+/* Calendario de ex-dividendos (estimado) → años desde hoy para el árbol. */
+function loadDivs(sym){
+  api("/api/div?t=" + encodeURIComponent(sym)).then(function(j){
+    var now = Date.now();
+    DIVSCHED = ((j && j.divs) || []).map(function(x){
+      var p = /^(\d{4})-(\d{2})-(\d{2})$/.exec(x.date);
+      var ty = p ? (Date.UTC(+p[1], +p[2] - 1, +p[3]) - now) / (365 * 86400000) : 0;
+      return {date: x.date, amount: x.amount, ty: ty};
+    }).filter(function(x){ return x.ty > 0; });
+    DIVEST = !!(j && j.estimated);
+    syncBs(); render();
+  }).catch(function(){ DIVSCHED = []; });
+}
+function showMarket(){
+  var row = el("mktRow");
+  row.hidden = false;
+  row.style.display = "grid";
+  el("mSym").textContent = MK.sym;
+  el("mSym").title = MK.name || MK.sym;
+  el("mSpot").textContent = fk(MK.spot) + " " + MK.cur;
+  var chg = el("mChg");
+  if (MK.chg === null){ chg.textContent = "—"; chg.className = "n"; }
+  else {
+    chg.textContent = (MK.chg >= 0 ? "+" : "−") + Math.abs(MK.chg).toFixed(2) + "%";
+    chg.className = "n " + (MK.chg >= 0 ? "pos" : "neg");
+  }
+  el("mDays").textContent = (MK.days === null || MK.days === undefined) ? "—" : MK.days + " d";
+  el("mIv").textContent = MK.atmIV ? pct(MK.atmIV) : "—";
+  el("mRv").textContent = MK.rv20 ? pct(MK.rv20) : "—";
+  el("presetNote").textContent =
+    "Presets reescalados a " + MK.sym + " en " + fk(MK.spot) + ": el strike va al listado más cercano y la prima sale de la cadena (" +
+    (SIDE === "mid" ? "mid entre bid y ask" : "la punta que te cruza") + ").";
+}
+function goManual(){
+  REQ++;
+  MK.on = false; MK.calls = {}; MK.puts = {}; MK.strikes = []; MK.sigma1 = null;
+  S0 = 100;
+  elapsed = 0; syncBs();
+  markQuick(null);
+  var row = el("mktRow");
+  row.hidden = true;
+  row.style.display = "none";
+  el("presetNote").textContent = "Modo manual: subyacente en 100, strikes y primas a mano.";
+  if (activePreset) applyPreset(activePreset);
+  else { renderLegs(); recomputeDomain(false); render(); }
+  say("Modo manual. Nada de red: los números son los del ejemplo.", "");
+}
+
+/* ---------- tickers de la mesa ---------- */
+(function buildQuick(){
+  var qbox = el("quick");
+  WATCH.forEach(function(sym){
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = sym;
+    b.setAttribute("data-t", sym);
+    b.addEventListener("click", function(){ loadTicker(sym); });
+    qbox.appendChild(b);
+  });
+})();
+function markQuick(sym){
+  var bs = el("quick").querySelectorAll("button");
+  for (var i = 0; i < bs.length; i++)
+    bs[i].classList.toggle("on", bs[i].getAttribute("data-t") === sym);
+}
+
+el("btnLoad").addEventListener("click", function(){ loadTicker(); });
+el("tk").addEventListener("keydown", function(e){ if (e.key === "Enter") loadTicker(); });
+el("exp").addEventListener("change", function(e){ loadChain(e.target.value); });
+el("btnReload").addEventListener("click", function(){ loadTicker(MK.sym || null); });
+el("btnManual").addEventListener("click", goManual);
+
+el("btnMult").addEventListener("click", function(){
+  MULT = (MULT === 1) ? 100 : 1;
+  this.classList.toggle("on", MULT === 100);
+  this.textContent = MULT === 100 ? "×100 por contrato" : "×1 por acción";
+  render();
+});
+el("btnSide").addEventListener("click", function(){
+  SIDE = (SIDE === "mid") ? "cross" : "mid";
+  this.classList.toggle("on", SIDE === "cross");
+  this.textContent = SIDE === "mid" ? "prima: mid" : "prima: te cruzan";
+  if (MK.on){ priceAll(); showMarket(); renderLegs(); render(); }
+});
+el("btnZone").addEventListener("click", function(){
+  var s = MK.sigma1;
+  if (!s && MK.on && MK.rv20 && MK.days) s = MK.spot * MK.rv20 * Math.sqrt(Math.max(MK.days, 1) / 365);
+  if (!s){ say("Para la zona ±1σ hace falta un ticker con cadena cargada.", "err"); return; }
+  zlo = clamp(qstep(MK.spot - s, STEP)); zhi = clamp(qstep(MK.spot + s, STEP));
+  el("zlo").value = zlo; el("zhi").value = zhi;
+  el("zloVal").textContent = fk(zlo); el("zhiVal").textContent = fk(zhi);
+  render();
+  say("Zona = spot ± 1σ implícito al vencimiento: " + fk(zlo) + " a " + fk(zhi) +
+      " (±" + fk(s) + ", " + (MK.atmIV ? pct(MK.atmIV) : "vol realizada") + " × √(" + MK.days + "/365)).", "ok");
+});
+
+/* ================= Black-Scholes · controles ================= */
+function clampElapsed(){ elapsed = Math.max(0, Math.min(elapsed, DTE)); }
+function syncBs(){
+  el("bsR").value = (RATE * 100).toFixed(2);
+  el("bsQ").value = (DIVY * 100).toFixed(2);
+  el("bsIv").value = Math.round(IVMAN * 100);
+  el("bsDte").value = DTE;
+  var h = el("bsH");
+  h.max = Math.max(1, Math.round(DTE)); h.value = elapsed;
+  el("bsHVal").textContent = elapsed + "d";
+  el("bsV").value = VSHIFT;
+  el("bsVVal").textContent = (VSHIFT >= 0 ? "+" : "−") + Math.abs(VSHIFT) + "pt";
+  var ab = el("btnRate");
+  ab.textContent = rateAuto ? "r: curva" : "r: manual";
+  ab.classList.toggle("on", rateAuto);
+  el("btnModel").textContent = MODEL === "american" ? "modelo: americano" : "modelo: europeo";
+  el("btnDiv").textContent = DIVMODE === "discretos" ? "div: discretos" : "div: continuo";
+  el("btnSurf").textContent = SURFMODE ? "IV: superficie" : "IV: cadena";
+}
+el("bsR").addEventListener("input", function(e){
+  var v = parseFloat(e.target.value);
+  if (!isNaN(v)){ RATE = v / 100; rateAuto = false; syncBs(); render(); }
+});
+el("bsQ").addEventListener("input", function(e){
+  var v = parseFloat(e.target.value);
+  if (!isNaN(v)){ DIVY = v / 100; render(); }
+});
+el("bsIv").addEventListener("input", function(e){
+  var v = parseFloat(e.target.value);
+  if (!isNaN(v) && v > 0){ IVMAN = v / 100; render(); }
+});
+el("bsDte").addEventListener("input", function(e){
+  var v = parseFloat(e.target.value);
+  if (!isNaN(v) && v >= 0){
+    DTE = v; clampElapsed(); applyCurveRate();
+    var h = el("bsH");
+    h.max = Math.max(1, Math.round(DTE)); h.value = elapsed;
+    el("bsHVal").textContent = elapsed + "d";
+    syncBs(); render();
+  }
+});
+el("bsH").addEventListener("input", function(e){
+  elapsed = parseInt(e.target.value, 10) || 0;
+  el("bsHVal").textContent = elapsed + "d";
+  render();
+});
+el("bsV").addEventListener("input", function(e){
+  VSHIFT = parseInt(e.target.value, 10) || 0;
+  el("bsVVal").textContent = (VSHIFT >= 0 ? "+" : "−") + Math.abs(VSHIFT) + "pt";
+  render();
+});
+el("btnRate").addEventListener("click", function(){
+  rateAuto = !rateAuto;
+  if (rateAuto) applyCurveRate();
+  syncBs(); render();
+});
+el("btnModel").addEventListener("click", function(){
+  MODEL = MODEL === "american" ? "european" : "american";
+  syncBs(); render();
+});
+el("btnDiv").addEventListener("click", function(){
+  DIVMODE = DIVMODE === "discretos" ? "continuo" : "discretos";
+  syncBs(); render();
+});
+el("btnSurf").addEventListener("click", function(){
+  SURFMODE = !SURFMODE;
+  syncBs(); render();
+});
+
+/* ================= arranque ================= */
+markPreset("Covered call");
+applyPreset("Covered call");
+recomputeDomain(false);
+syncBs();
+render();
+
+/* Curva del Tesoro: r se interpola al plazo de la opción. */
+api("/api/curve").then(function(j){
+  if (j && j.points && j.points.length){
+    CURVE = j.points; applyCurveRate(); syncBs(); render();
+  }
+}).catch(function(){});
+
+/* Si hay backend y red, arranca con el ticker del input; si no, queda manual. */
+api("/api/health").then(function(h){
+  if (h.yfinance) say("Backend listo · yfinance " + h.yfinance + " · cargá un ticker.", "");
+  else say("Backend listo · sin yfinance, uso la API pública de Yahoo.", "");
+  loadTicker();
+}).catch(function(){
+  say("Sin backend: modo manual. Levantá el servidor con  python3 server.py  para datos reales.", "err");
+});
+
+})();
+</script>
+</body>
+</html>

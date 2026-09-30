@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rivendel-payoff-lab"
+version = "1.1.0"
+description = "Payoff Lab local con datos reales: servidor stdlib + frontend con griegas americanas, curva del Tesoro, dividendos discretos y superficie SVI arbitrage-free."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "local-use" }
+dependencies = []            # el servidor es stdlib pura
+
+[project.optional-dependencies]
+data = ["yfinance>=0.2.40"]  # proveedor primario (si falta, cae a Yahoo por HTTP)
+dev = ["pytest>=7", "py_vollib"]  # py_vollib = referencia independiente para el golden-master
+
+[project.scripts]
+rivendel = "server:main"
+
+[tool.setuptools]
+py-modules = ["server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
