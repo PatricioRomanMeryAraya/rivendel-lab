@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias de test
+        # py_vollib habilita el cross-check independiente (Jäckel "Let's Be Rational")
+        run: pip install pytest py_vollib
+
+      - name: Regenerar golden-master (alta precisión, math.erf)
+        run: python tests/gen_reference.py
+
+      - name: Suite (pricing golden-master + servidor + sintaxis JS)
+        run: python -m pytest
