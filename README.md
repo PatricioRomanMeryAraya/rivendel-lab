@@ -7,6 +7,14 @@ cadena de opciones real vía **yfinance** (con respaldo a la API pública de Yah
 Inspirado en el lab de payoff de Atlas (atlas-l3.vercel.app); frontend
 reimplementado desde cero.
 
+## Capturas
+
+![Rivendel en escritorio](docs/screenshots/rivendel-desktop.png)
+*Lab en modo manual: preset Covered call, payoff al vencimiento y P&L marcado a modelo.*
+
+![Rivendel en el teléfono](docs/screenshots/rivendel-mobile.png)
+*La misma app en vista móvil: está diseñada para correr en Termux.*
+
 ## Arranque
 
 ```bash
