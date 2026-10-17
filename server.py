@@ -52,6 +52,7 @@ TTL_QUOTE = 60.0     # segundos: el spot se refresca seguido
 TTL_CHAIN = 300.0    # la cadena de opciones cambia más lento y pesa más
 TTL_HIST = 3600.0    # el histórico diario, una vez por hora alcanza
 TTL_CURVE = 6 * 3600.0  # la curva del Tesoro cambia una vez por día hábil
+TTL_DCF = 3600.0      # una valuación DCF por hora y ticker alcanza
 
 TICKER_RE = re.compile(r"^[A-Za-z0-9.\-=^]{1,20}$")
 
@@ -568,6 +569,31 @@ def fetch(kind, sym, expiry=None):
     raise DataError(" · ".join(errors) or "sin proveedor de datos")
 
 
+# ------------------------------------------------- valuación DCF (Damodaran)
+
+
+def _dcf_payload(sym, live=True):
+    """Valuación DCF end-to-end para el endpoint /api/dcf. Lanza DataError si
+    los datos son insuficientes (p.ej. financieras) o si falta numpy/yfinance."""
+    try:
+        import dcf
+    except ImportError as exc:
+        raise DataError("DCF no disponible: %s" % exc)
+    try:
+        vo, macro, cd = dcf.value_ticker(sym, live=live)
+    except (ValueError, RuntimeError) as exc:
+        raise DataError(str(exc))
+    out = dcf.to_dict(vo, macro, cd)
+    try:
+        out["reverse"] = dcf.reverse_dcf(cd, macro=macro)
+        g, m, _M = dcf.sensitivity(cd, macro=macro)
+        out["sensitivity"] = {"growths": g, "margins": m, "values": _M}
+        out["growth_report"] = dcf.growth_report(cd)
+    except Exception:
+        pass
+    return dcf._clean(out)
+
+
 # ---------------------------------------------------------------- servidor
 
 STATIC = {
@@ -682,6 +708,12 @@ class Handler(BaseHTTPRequestHandler):
             key = "chain:%s:%s" % (sym, exp)
             return self._json(cached(key, TTL_CHAIN,
                                      lambda: fetch("chain", sym, exp)))
+
+        if path == "/api/dcf":
+            sym = self._ticker(q)
+            live = (q.get("live") or ["1"])[0] != "0"
+            key = "dcf:%s:%d" % (sym, live)
+            return self._json(cached(key, TTL_DCF, lambda: _dcf_payload(sym, live)))
 
         self._json({"error": "endpoint desconocido: %s" % path}, 404)
 

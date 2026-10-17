@@ -1,3 +1,7 @@
 # Única dependencia real. El servidor es stdlib pura; si yfinance no está,
 # cae solo a la API pública de Yahoo por urllib.
 yfinance>=0.2.40
+
+# El módulo DCF (dcf/) lo usa: triangulación Damodaran + base-rates Mauboussin.
+# yfinance ya lo trae transitivamente; se declara explícito.
+numpy>=1.24

@@ -123,10 +123,31 @@ pyproject.toml       packaging + configuración de pytest
 | `GET /api/curve` | curva de rendimientos del Tesoro de EE.UU. por tenor (`points`: pares `[años, tasa]`), fuente y fecha |
 | `GET /api/div?t=NVDA` | calendario de ex-dividendos **estimado** (proyección de la cadencia histórica): `divs` = `[{date, amount}]` |
 | `GET /api/chain?t=NVDA&e=2026-09-18` | cadena: strike, bid, ask, mid, último, IV, OI, volumen · más IV ATM y 1σ |
+| `GET /api/dcf?t=NVDA` | valuación DCF (Damodaran) con datos vivos: valor/acción, tabla FCFF a 10 años, reverse-DCF, sensibilidad y reporte de crecimiento |
 
-Cachés en memoria: 60 s el precio, 300 s la cadena. La cadena se recorta a los
+Cachés en memoria: 60 s el precio, 300 s la cadena, 1 h el DCF por ticker. La cadena se recorta a los
 90 strikes más cercanos al spot por lado y el JSON informa cuántos de cuántos
 mandó.
+
+## Valuación DCF · Damodaran
+
+El panel **valuación DCF** corre un DCF de dos etapas sobre FCFF con datos reales
+(yfinance + Tesoro 10Y público + ERP implícito de Damodaran, todo con respaldo
+etiquetado):
+
+- el crecimiento de ingresos se triangula en 3 vías (consenso de analistas →
+  fundamental RR×ROIC → histórico), con **tope base-rate de Mauboussin** (mediana
+  histórica 1950–2025 según el CAGR previo de la firma; la regresión a la media
+  es fuerte: r ≈ 0,15);
+- base **TTM anti-deriva**: si los últimos 4 trimestres son más nuevos que el
+  anual, todo el set (flujos, impuestos, balance) sale del TTM;
+- **cíclicas** (CV de márgenes ≥ 1,0): no se capitaliza el pico, se normaliza a
+  mitad de ciclo y se reporta el margen mid-cycle implícito en el precio;
+- cuando |upside| ≥ 10%, el panel sugiere estructuras del lab (bull/bear spreads,
+  cash-secured put) con strikes anclados al valor intrínseco y primas de la
+  cadena real; un clic las carga en la mesa.
+
+Herramienta educativa; no es asesoría de inversión.
 
 ## Tests
 
