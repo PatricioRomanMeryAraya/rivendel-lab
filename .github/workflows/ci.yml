@@ -18,9 +18,11 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Instalar dependencias de test
+      - name: Instalar dependencias
+        # -r requirements.txt: yfinance/numpy para el módulo DCF (los tests de
+        # TTM mockean yfinance.Ticker, que exige el módulo importable).
         # py_vollib habilita el cross-check independiente (Jäckel "Let's Be Rational")
-        run: pip install pytest py_vollib
+        run: pip install -r requirements.txt pytest py_vollib
 
       - name: Regenerar golden-master (alta precisión, math.erf)
         run: python tests/gen_reference.py
