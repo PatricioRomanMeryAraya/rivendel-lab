@@ -10,10 +10,11 @@ reimplementado desde cero.
 ## Capturas
 
 ![Rivendel en escritorio](docs/screenshots/rivendel-desktop.png)
-*Lab en modo manual: preset Covered call, payoff al vencimiento y P&L marcado a modelo.*
+*Panel de valuación DCF (Damodaran): valor intrínseco, reverse-DCF, sensibilidad y
+reporte de crecimiento con tope base-rate de Mauboussin, con datos vivos.*
 
 ![Rivendel en el teléfono](docs/screenshots/rivendel-mobile.png)
-*La misma app en vista móvil: está diseñada para correr en Termux.*
+*La misma app en vista móvil: mercado, DCF, presets y payoff con datos reales.*
 
 ## Arranque
 
